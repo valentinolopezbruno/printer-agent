@@ -22,7 +22,8 @@
   },
   "dependencies": {
     "express": "^4.18.2",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "node-thermal-printer": "^4.4.2"
   },
   "devDependencies": {
     "pkg": "^5.8.1"
