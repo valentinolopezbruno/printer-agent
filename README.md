@@ -80,3 +80,5 @@ Los logs se guardan en el archivo `print-agent.log` en el directorio de la aplic
 2. Revisar los logs en `print-agent.log`
 3. Asegurarse de que el puerto 3001 esté disponible
 4. Verificar los permisos de ejecución en Linux 
+
+ valentino-lopez - valentinolopezbruno@gmail.com
