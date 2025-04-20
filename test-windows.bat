@@ -1,19 +1,19 @@
 @echo off
+:: Cambiar al directorio donde está el script
+cd /d "%~dp0"
+
 echo Iniciando prueba del Print Agent...
+echo Directorio actual: %CD%
 
 :: Crear directorio para logs
 echo Creando directorio para logs...
 mkdir "%USERPROFILE%\AppData\Local\TuttoBenePrintAgent" 2>nul
 
-:: Mostrar directorio actual
-echo Directorio actual:
-cd
-echo.
-
 :: Verificar que existe el ejecutable
 echo Verificando ejecutable...
 if not exist "dist\print-agent.exe" (
     echo ERROR: No se encuentra dist\print-agent.exe
+    echo Directorio actual: %CD%
     echo Asegurate que el archivo existe en la carpeta dist
     pause
     exit /b 1
