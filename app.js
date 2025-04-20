@@ -91,127 +91,52 @@ app.get('/status', (req, res) => {
 // Configuración de la impresora
 const PRINTER_NAME = 'POS-58(copy of 2)';
 
-// Función para generar el comando ESC/POS
-function generarComandoEscPos(ticket) {
-  const lineas = [];
-  
-  // Espacios iniciales
-  lineas.push('\n\n\n\n');
-  
-  // Inicializar impresora
-  lineas.push('\x1B\x40'); // Inicializar impresora
-  
-  // Encabezado
-  lineas.push('\x1B\x21\x30'); // Texto en doble altura y negrita
-  lineas.push('\x1B\x61\x01'); // Centrado
-  lineas.push('TUTTO BENE\n');
-  lineas.push('\x1B\x21\x00'); // Texto normal
-  lineas.push('PASTAS ARTESANALES\n\n');
-  lineas.push('Tel: (353) 461-3071\n');
-  lineas.push('Bv. Alvear 470 - Villa Maria\n');
-  lineas.push('Cordoba - Argentina\n\n');
-  
-  // Información del pedido
-  lineas.push('\x1B\x21\x08'); // Texto en negrita
-  lineas.push('Sin validez fiscal\n');
-  lineas.push('\x1B\x21\x00'); // Texto normal
-  lineas.push(`Fecha: ${ticket.fecha}\n`);
-  lineas.push('--------------------------------\n\n');
-
-  // Datos del cliente
-  lineas.push('\x1B\x21\x08'); // Texto en negrita
-  lineas.push('DATOS DEL CLIENTE\n');
-  lineas.push('\x1B\x21\x00'); // Texto normal
-  lineas.push('--------------------------------\n');
-  lineas.push(`Cliente: ${normalizarTexto(ticket.cliente)}\n`);
-  lineas.push(`Telefono: ${ticket.telefono}\n`);
-  lineas.push(`Estado: ${ticket.pagado === 1 ? 'PAGADO' : 'NO PAGADO'}\n`);
-  lineas.push(`Tipo: ${ticket.tipoEntrega === 1 ? 'DOMICILIO' : 'LOCAL'}\n`);
-  
-  if (ticket.tipoEntrega === 1) {
-    lineas.push('\x1B\x21\x08'); // Texto en negrita
-    lineas.push(`Direccion: ${normalizarTexto(ticket.direccion)}\n`);
-  }
-  lineas.push('\n');
-
-  // Productos
-  lineas.push('\x1B\x61\x01'); // Centrado
-  lineas.push('\x1B\x21\x08'); // Texto en negrita
-  lineas.push('PRODUCTO\n');
-  lineas.push('\x1B\x21\x00'); // Texto normal
-  lineas.push('--------------------------------\n');
-
-  let total = 0;
-  ticket.detalles.forEach(detalle => {
-    const subtotal = detalle.precioUnitario * detalle.cantidad;
-    total += subtotal;
-    const variaciones = detalle.variacionesDetalle
-      .map(v => normalizarTexto(v.variacion.nombre))
-      .join(' - ');
-    const linea = `${normalizarTexto(detalle.productoRel.nombre)} ${variaciones} x${detalle.cantidad} $${subtotal}\n`;
-    lineas.push(linea);
-  });
-
-  // Total
-  lineas.push('\n--------------------------------\n');
-  lineas.push('\x1B\x61\x01'); // Centrado
-  lineas.push('\x1B\x21\x10'); // Texto en doble altura
-  lineas.push(`TOTAL: $${total}\n`);
-  lineas.push('\x1B\x21\x00'); // Texto normal
-  lineas.push('--------------------------------\n\n');
-
-  // Pie de ticket
-  lineas.push('\x1B\x61\x01'); // Centrado
-  lineas.push('Gracias por su compra\n\n');
-  lineas.push('--------------------------------\n');
-  
-  // Espacio final y corte
-  lineas.push('\n\n\n\n');
-  lineas.push('\x1B\x64\x05'); // Corte de papel
-  
-  return lineas.join('');
-}
-
 // Función para imprimir en Windows
 async function imprimirWindows(comandoEscPos, logger) {
     const tempFile = path.join(os.tmpdir(), `ticket-${Date.now()}.txt`);
     
     try {
         // Guardar el contenido en un archivo temporal
-        fs.writeFileSync(tempFile, comandoEscPos);
+        fs.writeFileSync(tempFile, comandoEscPos, 'binary');
         logger.info(`Archivo temporal creado en: ${tempFile}`);
         
-        // Intentar imprimir usando el nombre específico de la impresora
+        // Intentar imprimir usando redirección directa
         try {
-            logger.info(`Intentando imprimir en ${PRINTER_NAME} usando comando 'print'`);
+            logger.info(`Intentando imprimir en ${PRINTER_NAME}`);
+            
+            // Usar copy en lugar de type para mantener los bytes binarios
+            const comando = `copy /b "${tempFile}" "${PRINTER_NAME}"`;
+            logger.info(`Ejecutando comando: ${comando}`);
+            
             await new Promise((resolve, reject) => {
-                const printProcess = spawn('cmd', ['/c', `type "${tempFile}" > "${PRINTER_NAME}"`]);
+                const printProcess = spawn('cmd', ['/c', comando]);
                 
                 printProcess.stdout?.on('data', (data) => {
-                    logger.info(`Salida del proceso: ${data}`);
+                    logger.info(`Salida: ${data}`);
                 });
 
                 printProcess.stderr?.on('data', (data) => {
-                    logger.error(`Error del proceso: ${data}`);
+                    logger.error(`Error: ${data}`);
                 });
                 
                 printProcess.on('error', (error) => {
-                    logger.error(`Error al ejecutar el comando: ${error.message}`);
+                    logger.error(`Error al ejecutar comando: ${error.message}`);
                     reject(error);
                 });
                 
                 printProcess.on('close', (code) => {
                     if (code === 0) {
-                        logger.info('Comando de impresión ejecutado exitosamente');
+                        logger.info('Comando ejecutado exitosamente');
                         resolve();
                     } else {
-                        logger.error(`Comando falló con código: ${code}`);
-                        reject(new Error(`Código de salida: ${code}`));
+                        const error = `Comando falló con código: ${code}`;
+                        logger.error(error);
+                        reject(new Error(error));
                     }
                 });
             });
             
-            logger.info(`Impresión enviada exitosamente a ${PRINTER_NAME}`);
+            logger.info('Impresión enviada exitosamente');
             return true;
         } catch (error) {
             logger.error(`Error al imprimir: ${error.message}`);
@@ -226,6 +151,80 @@ async function imprimirWindows(comandoEscPos, logger) {
             logger.warn(`No se pudo eliminar archivo temporal: ${error.message}`);
         }
     }
+}
+
+// Modificar la función generarComandoEscPos para asegurar que los comandos ESC/POS son correctos
+function generarComandoEscPos(ticket) {
+    const lineas = [];
+    
+    // Inicializar impresora
+    lineas.push('\x1B\x40'); // ESC @ - Inicializar impresora
+    
+    // Configurar tamaño de texto
+    lineas.push('\x1B\x21\x00'); // ESC ! 0 - Texto normal
+    
+    // Centrar
+    lineas.push('\x1B\x61\x01'); // ESC a 1 - Centrado
+    
+    // Encabezado
+    lineas.push('TUTTO BENE\n');
+    lineas.push('PASTAS ARTESANALES\n\n');
+    lineas.push('Tel: (353) 461-3071\n');
+    lineas.push('Bv. Alvear 470 - Villa Maria\n');
+    lineas.push('Cordoba - Argentina\n\n');
+    
+    // Alinear a la izquierda
+    lineas.push('\x1B\x61\x00'); // ESC a 0 - Izquierda
+    
+    // Información del pedido
+    lineas.push('Sin validez fiscal\n');
+    lineas.push(`Fecha: ${ticket.fecha}\n`);
+    lineas.push('--------------------------------\n\n');
+
+    // Datos del cliente
+    lineas.push('DATOS DEL CLIENTE\n');
+    lineas.push('--------------------------------\n');
+    lineas.push(`Cliente: ${normalizarTexto(ticket.cliente)}\n`);
+    lineas.push(`Telefono: ${ticket.telefono}\n`);
+    lineas.push(`Estado: ${ticket.pagado === 1 ? 'PAGADO' : 'NO PAGADO'}\n`);
+    lineas.push(`Tipo: ${ticket.tipoEntrega === 1 ? 'DOMICILIO' : 'LOCAL'}\n`);
+    
+    if (ticket.tipoEntrega === 1) {
+        lineas.push(`Direccion: ${normalizarTexto(ticket.direccion)}\n`);
+    }
+    lineas.push('\n');
+
+    // Centrar
+    lineas.push('\x1B\x61\x01'); // ESC a 1 - Centrado
+    lineas.push('PRODUCTO\n');
+    lineas.push('--------------------------------\n');
+
+    // Alinear a la izquierda para los productos
+    lineas.push('\x1B\x61\x00'); // ESC a 0 - Izquierda
+
+    let total = 0;
+    ticket.detalles.forEach(detalle => {
+        const subtotal = detalle.precioUnitario * detalle.cantidad;
+        total += subtotal;
+        const variaciones = detalle.variacionesDetalle
+            .map(v => normalizarTexto(v.variacion.nombre))
+            .join(' - ');
+        const linea = `${normalizarTexto(detalle.productoRel.nombre)} ${variaciones}\n`;
+        lineas.push(linea);
+        lineas.push(`${detalle.cantidad} x $${detalle.precioUnitario} = $${subtotal}\n`);
+    });
+
+    // Centrar para el total
+    lineas.push('\x1B\x61\x01'); // ESC a 1 - Centrado
+    lineas.push('\n--------------------------------\n');
+    lineas.push(`TOTAL: $${total}\n`);
+    lineas.push('--------------------------------\n\n');
+    lineas.push('Gracias por su compra!\n\n');
+    
+    // Cortar papel
+    lineas.push('\x1B\x69'); // ESC i - Corte parcial
+    
+    return lineas.join('');
 }
 
 // Endpoint para imprimir
