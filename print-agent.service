@@ -1,0 +1,14 @@
+[Unit]
+Description=Agente de impresión Tutto Bene
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/print-agent
+ExecStart=/opt/print-agent/print-agent
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target 
