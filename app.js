@@ -5,6 +5,7 @@ const { spawn } = require('child_process');
 const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 // Reemplazar la dependencia normalize-text con una función propia
 function normalizarTexto(texto) {
@@ -168,47 +169,110 @@ function generarComandoEscPos(ticket) {
   return lineas.join('');
 }
 
+// Función para imprimir en Windows
+async function imprimirWindows(comandoEscPos, logger) {
+    const tempFile = path.join(os.tmpdir(), `ticket-${Date.now()}.txt`);
+    
+    try {
+        // Guardar el contenido en un archivo temporal
+        fs.writeFileSync(tempFile, comandoEscPos);
+        
+        // Intentar primero con el comando print
+        try {
+            await new Promise((resolve, reject) => {
+                const printProcess = spawn('print', ['/d:printer', tempFile]);
+                
+                printProcess.on('error', (error) => {
+                    logger.error(`Error con comando 'print': ${error.message}`);
+                    reject(error);
+                });
+                
+                printProcess.on('close', (code) => {
+                    if (code === 0) {
+                        resolve();
+                    } else {
+                        reject(new Error(`Código de salida: ${code}`));
+                    }
+                });
+            });
+            
+            logger.info('Impresión exitosa usando comando print');
+            return true;
+        } catch (error) {
+            logger.warn(`Falló impresión con 'print', intentando con redirección > PRN`);
+            
+            // Si falla, intentar con redirección a PRN
+            await new Promise((resolve, reject) => {
+                const printProcess = spawn('cmd', ['/c', `type "${tempFile}" > PRN`]);
+                
+                printProcess.on('error', (error) => {
+                    logger.error(`Error con redirección PRN: ${error.message}`);
+                    reject(error);
+                });
+                
+                printProcess.on('close', (code) => {
+                    if (code === 0) {
+                        resolve();
+                    } else {
+                        reject(new Error(`Código de salida: ${code}`));
+                    }
+                });
+            });
+            
+            logger.info('Impresión exitosa usando redirección PRN');
+            return true;
+        }
+    } catch (error) {
+        logger.error(`Error al imprimir: ${error.message}`);
+        throw error;
+    } finally {
+        // Limpiar archivo temporal
+        try {
+            fs.unlinkSync(tempFile);
+        } catch (error) {
+            logger.warn(`No se pudo eliminar archivo temporal: ${error.message}`);
+        }
+    }
+}
+
 // Endpoint para imprimir
 app.post('/imprimir', async (req, res) => {
-  try {
-    const ticket = req.body;
-    logger.info('Recibido nuevo ticket para imprimir');
-    logger.info(`Datos del ticket: ${JSON.stringify(ticket)}`);
-    
-    const comandoEscPos = generarComandoEscPos(ticket);
-    
-    // En Windows, verificar si usamos otro comando en lugar de 'lp'
-    const comando = process.platform === 'win32' ? 'notepad' : 'lp';
-    const args = process.platform === 'win32' ? 
-      ['/p'] : ['-d', 'printer', '-'];
-    
-    logger.info(`Ejecutando comando de impresión: ${comando} ${args.join(' ')}`);
-    
-    const printProcess = spawn(comando, args);
-    
-    printProcess.stdin.write(comandoEscPos);
-    printProcess.stdin.end();
-    
-    printProcess.on('error', (error) => {
-      logger.error(`Error al ejecutar el proceso de impresión: ${error.message}`);
-      res.status(500).json({ error: error.message });
-    });
-    
-    printProcess.on('close', (code) => {
-      if (code === 0) {
-        logger.info('Ticket impreso exitosamente');
-        res.status(200).json({ mensaje: 'Ticket impreso exitosamente' });
-      } else {
-        logger.error(`Error al imprimir: código ${code}`);
-        res.status(500).json({ error: `Error al imprimir el ticket (código ${code})` });
-      }
-    });
-    
-  } catch (error) {
-    logger.error(`Error: ${error.message}`);
-    logger.error(error.stack);
-    res.status(500).json({ error: error.message });
-  }
+    try {
+        const ticket = req.body;
+        logger.info('Recibido nuevo ticket para imprimir');
+        logger.info(`Datos del ticket: ${JSON.stringify(ticket)}`);
+        
+        const comandoEscPos = generarComandoEscPos(ticket);
+        
+        if (process.platform === 'win32') {
+            await imprimirWindows(comandoEscPos, logger);
+            res.status(200).json({ mensaje: 'Ticket impreso exitosamente' });
+        } else {
+            // Código existente para Linux
+            const printProcess = spawn('lp', ['-d', 'printer', '-']);
+            printProcess.stdin.write(comandoEscPos);
+            printProcess.stdin.end();
+            
+            printProcess.on('error', (error) => {
+                logger.error(`Error al ejecutar el proceso de impresión: ${error.message}`);
+                res.status(500).json({ error: error.message });
+            });
+            
+            printProcess.on('close', (code) => {
+                if (code === 0) {
+                    logger.info('Ticket impreso exitosamente');
+                    res.status(200).json({ mensaje: 'Ticket impreso exitosamente' });
+                } else {
+                    logger.error(`Error al imprimir: código ${code}`);
+                    res.status(500).json({ error: `Error al imprimir el ticket (código ${code})` });
+                }
+            });
+        }
+    } catch (error) {
+        logger.error(`Error: ${error.message}`);
+        logger.error(error.stack);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // Iniciar servidor
