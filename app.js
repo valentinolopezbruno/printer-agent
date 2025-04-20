@@ -292,3 +292,47 @@ process.on('unhandledRejection', (reason, promise) => {
   logger.error('Promesa rechazada no manejada:', reason);
   console.error('Promesa rechazada no manejada:', reason);
 });
+
+// Al inicio del archivo, después de los requires
+process.on('uncaughtException', (error) => {
+    console.error('Error fatal:', error);
+    console.error('Stack trace:', error.stack);
+    // Mantener la ventana abierta
+    console.log('\nPresiona Ctrl+C para cerrar...');
+});
+
+// Agregar logging inmediato
+console.log('=== Print Agent Iniciando ===');
+console.log('Versión de Node:', process.version);
+console.log('Sistema operativo:', process.platform);
+console.log('Directorio actual:', process.cwd());
+console.log('Argumentos:', process.argv);
+console.log('Variables de entorno relevantes:', {
+    PATH: process.env.PATH,
+    TEMP: process.env.TEMP,
+    USERPROFILE: process.env.USERPROFILE
+});
+
+// Verificar que podemos acceder a los directorios necesarios
+try {
+    const testDirs = [
+        process.env.TEMP,
+        process.env.LOCALAPPDATA,
+        'C:\\Program Files\\TuttoBenePrintAgent'
+    ];
+
+    console.log('\nVerificando acceso a directorios:');
+    testDirs.forEach(dir => {
+        try {
+            if (fs.existsSync(dir)) {
+                console.log(`✓ ${dir} - Accesible`);
+            } else {
+                console.log(`✗ ${dir} - No existe`);
+            }
+        } catch (error) {
+            console.log(`✗ ${dir} - Error al acceder:`, error.message);
+        }
+    });
+} catch (error) {
+    console.error('Error al verificar directorios:', error);
+}
