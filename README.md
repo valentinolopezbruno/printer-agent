@@ -1,23 +1,23 @@
-# Agente de Impresión Tutto Bene
+# Tutto Bene Print Agent
 
-Agente local de impresión de tickets para Pastas Tutto Bene.
+Local ticket printing agent for Pastas Tutto Bene.
 
-## Requisitos
+## Requirements
 
-- Node.js 18 o superior
-- Impresora térmica compatible con ESC/POS
-- Sistema operativo: Windows o Linux
+- Node.js 18 or higher
+- ESC/POS compatible thermal printer
+- Operating System: Windows or Linux
 
-## Instalación
+## Installation
 
 ### Linux
 
-1. Compilar la aplicación:
+1. Build the application:
 ```bash
 npm run build
 ```
 
-2. Instalar el servicio:
+2. Install the service:
 ```bash
 sudo cp dist/print-agent /opt/print-agent/
 sudo cp print-agent.service /etc/systemd/system/
@@ -28,27 +28,27 @@ sudo systemctl start print-agent
 
 ### Windows
 
-1. Compilar la aplicación:
+1. Build the application:
 ```bash
 npm run build
 ```
 
-2. Ejecutar el script de instalación:
+2. Run the installation script:
 ```bash
 install-windows.bat
 ```
 
-## Uso
+## Usage
 
-La aplicación se ejecuta automáticamente al iniciar el sistema y expone un servidor local en `http://localhost:3001`.
+The application runs automatically on system startup and exposes a local server at `http://localhost:3001`.
 
-### Endpoint de impresión
+### Print Endpoint
 
 - URL: `http://localhost:3001/imprimir`
-- Método: POST
+- Method: POST
 - Content-Type: application/json
 
-Ejemplo de JSON:
+Example JSON:
 ```json
 {
   "cliente": "Juan Pérez",
@@ -72,13 +72,13 @@ Ejemplo de JSON:
 
 ## Logs
 
-Los logs se guardan en el archivo `print-agent.log` en el directorio de la aplicación.
+Logs are saved in the `print-agent.log` file in the application directory.
 
-## Solución de problemas
+## Troubleshooting
 
-1. Verificar que la impresora esté conectada y configurada correctamente
-2. Revisar los logs en `print-agent.log`
-3. Asegurarse de que el puerto 3001 esté disponible
-4. Verificar los permisos de ejecución en Linux 
+1. Verify that the printer is connected and configured correctly
+2. Check the logs in `print-agent.log`
+3. Ensure port 3001 is available
+4. Verify execution permissions in Linux
 
  valentino-lopez - valentinolopezbruno@gmail.com
