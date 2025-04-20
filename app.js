@@ -88,6 +88,9 @@ app.get('/status', (req, res) => {
   });
 });
 
+// Configuración de la impresora
+const PRINTER_NAME = 'Virtual PRN';
+
 // Función para generar el comando ESC/POS
 function generarComandoEscPos(ticket) {
   const lineas = [];
@@ -177,10 +180,10 @@ async function imprimirWindows(comandoEscPos, logger) {
         // Guardar el contenido en un archivo temporal
         fs.writeFileSync(tempFile, comandoEscPos);
         
-        // Intentar primero con el comando print
+        // Intentar imprimir usando el nombre específico de la impresora
         try {
             await new Promise((resolve, reject) => {
-                const printProcess = spawn('print', ['/d:printer', tempFile]);
+                const printProcess = spawn('print', [`/d:"${PRINTER_NAME}"`, tempFile]);
                 
                 printProcess.on('error', (error) => {
                     logger.error(`Error con comando 'print': ${error.message}`);
@@ -196,17 +199,17 @@ async function imprimirWindows(comandoEscPos, logger) {
                 });
             });
             
-            logger.info('Impresión exitosa usando comando print');
+            logger.info(`Impresión exitosa usando comando print en ${PRINTER_NAME}`);
             return true;
         } catch (error) {
-            logger.warn(`Falló impresión con 'print', intentando con redirección > PRN`);
+            logger.warn(`Falló impresión con 'print', intentando con redirección directa`);
             
-            // Si falla, intentar con redirección a PRN
+            // Si falla, intentar con redirección directa a la impresora
             await new Promise((resolve, reject) => {
-                const printProcess = spawn('cmd', ['/c', `type "${tempFile}" > PRN`]);
+                const printProcess = spawn('cmd', ['/c', `type "${tempFile}" > "${PRINTER_NAME}"`]);
                 
                 printProcess.on('error', (error) => {
-                    logger.error(`Error con redirección PRN: ${error.message}`);
+                    logger.error(`Error con redirección directa: ${error.message}`);
                     reject(error);
                 });
                 
@@ -219,7 +222,7 @@ async function imprimirWindows(comandoEscPos, logger) {
                 });
             });
             
-            logger.info('Impresión exitosa usando redirección PRN');
+            logger.info(`Impresión exitosa usando redirección directa a ${PRINTER_NAME}`);
             return true;
         }
     } catch (error) {
