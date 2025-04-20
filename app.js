@@ -90,6 +90,7 @@ app.get('/status', (req, res) => {
 
 // Configuración de la impresora
 const PRINTER_NAME = 'POS-58(copy of 2)';
+const PRINTER_PORT = 'USB001';
 
 // Función para imprimir en Windows
 async function imprimirWindows(comandoEscPos, logger) {
@@ -100,16 +101,19 @@ async function imprimirWindows(comandoEscPos, logger) {
         fs.writeFileSync(tempFile, comandoEscPos, 'binary');
         logger.info(`Archivo temporal creado en: ${tempFile}`);
         
-        // Intentar imprimir usando redirección directa
+        // Intentar imprimir usando el puerto directamente
         try {
-            logger.info(`Intentando imprimir en ${PRINTER_NAME}`);
+            logger.info(`Intentando imprimir en puerto ${PRINTER_PORT}`);
             
-            // Usar copy en lugar de type para mantener los bytes binarios
-            const comando = `copy /b "${tempFile}" "${PRINTER_NAME}"`;
+            // Usar el puerto directamente
+            const comando = `copy /b "${tempFile}" \\\\.\\${PRINTER_PORT}`;
             logger.info(`Ejecutando comando: ${comando}`);
             
             await new Promise((resolve, reject) => {
-                const printProcess = spawn('cmd', ['/c', comando]);
+                const printProcess = spawn('cmd', ['/c', comando], {
+                    windowsHide: true,
+                    stdio: ['pipe', 'pipe', 'pipe']
+                });
                 
                 printProcess.stdout?.on('data', (data) => {
                     logger.info(`Salida: ${data}`);
@@ -136,11 +140,36 @@ async function imprimirWindows(comandoEscPos, logger) {
                 });
             });
             
-            logger.info('Impresión enviada exitosamente');
+            logger.info('Impresión enviada exitosamente al puerto');
             return true;
         } catch (error) {
-            logger.error(`Error al imprimir: ${error.message}`);
-            throw error;
+            // Si falla el puerto directo, intentar con el nombre de la impresora
+            logger.warn(`Error al usar puerto directo: ${error.message}`);
+            logger.info('Intentando con nombre de impresora...');
+            
+            const comandoAlternativo = `copy /b "${tempFile}" "${PRINTER_NAME}"`;
+            logger.info(`Ejecutando comando alternativo: ${comandoAlternativo}`);
+            
+            await new Promise((resolve, reject) => {
+                const printProcess = spawn('cmd', ['/c', comandoAlternativo]);
+                
+                printProcess.on('error', (error) => {
+                    logger.error(`Error al ejecutar comando alternativo: ${error.message}`);
+                    reject(error);
+                });
+                
+                printProcess.on('close', (code) => {
+                    if (code === 0) {
+                        logger.info('Comando alternativo ejecutado exitosamente');
+                        resolve();
+                    } else {
+                        reject(new Error(`Código de salida alternativo: ${code}`));
+                    }
+                });
+            });
+            
+            logger.info('Impresión enviada exitosamente usando método alternativo');
+            return true;
         }
     } finally {
         // Limpiar archivo temporal
