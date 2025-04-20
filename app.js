@@ -89,7 +89,7 @@ app.get('/status', (req, res) => {
 });
 
 // Configuración de la impresora
-const PRINTER_NAME = 'Virtual PRN';
+const PRINTER_NAME = 'POS-58';
 
 // Función para generar el comando ESC/POS
 function generarComandoEscPos(ticket) {
@@ -179,59 +179,49 @@ async function imprimirWindows(comandoEscPos, logger) {
     try {
         // Guardar el contenido en un archivo temporal
         fs.writeFileSync(tempFile, comandoEscPos);
+        logger.info(`Archivo temporal creado en: ${tempFile}`);
         
         // Intentar imprimir usando el nombre específico de la impresora
         try {
-            await new Promise((resolve, reject) => {
-                const printProcess = spawn('print', [`/d:"${PRINTER_NAME}"`, tempFile]);
-                
-                printProcess.on('error', (error) => {
-                    logger.error(`Error con comando 'print': ${error.message}`);
-                    reject(error);
-                });
-                
-                printProcess.on('close', (code) => {
-                    if (code === 0) {
-                        resolve();
-                    } else {
-                        reject(new Error(`Código de salida: ${code}`));
-                    }
-                });
-            });
-            
-            logger.info(`Impresión exitosa usando comando print en ${PRINTER_NAME}`);
-            return true;
-        } catch (error) {
-            logger.warn(`Falló impresión con 'print', intentando con redirección directa`);
-            
-            // Si falla, intentar con redirección directa a la impresora
+            logger.info(`Intentando imprimir en ${PRINTER_NAME} usando comando 'print'`);
             await new Promise((resolve, reject) => {
                 const printProcess = spawn('cmd', ['/c', `type "${tempFile}" > "${PRINTER_NAME}"`]);
                 
+                printProcess.stdout?.on('data', (data) => {
+                    logger.info(`Salida del proceso: ${data}`);
+                });
+
+                printProcess.stderr?.on('data', (data) => {
+                    logger.error(`Error del proceso: ${data}`);
+                });
+                
                 printProcess.on('error', (error) => {
-                    logger.error(`Error con redirección directa: ${error.message}`);
+                    logger.error(`Error al ejecutar el comando: ${error.message}`);
                     reject(error);
                 });
                 
                 printProcess.on('close', (code) => {
                     if (code === 0) {
+                        logger.info('Comando de impresión ejecutado exitosamente');
                         resolve();
                     } else {
+                        logger.error(`Comando falló con código: ${code}`);
                         reject(new Error(`Código de salida: ${code}`));
                     }
                 });
             });
             
-            logger.info(`Impresión exitosa usando redirección directa a ${PRINTER_NAME}`);
+            logger.info(`Impresión enviada exitosamente a ${PRINTER_NAME}`);
             return true;
+        } catch (error) {
+            logger.error(`Error al imprimir: ${error.message}`);
+            throw error;
         }
-    } catch (error) {
-        logger.error(`Error al imprimir: ${error.message}`);
-        throw error;
     } finally {
         // Limpiar archivo temporal
         try {
             fs.unlinkSync(tempFile);
+            logger.info('Archivo temporal eliminado');
         } catch (error) {
             logger.warn(`No se pudo eliminar archivo temporal: ${error.message}`);
         }
