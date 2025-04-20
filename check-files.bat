@@ -1,4 +1,7 @@
 @echo off
+:: Cambiar al directorio donde está el script
+cd /d "%~dp0"
+
 echo === Verificacion de archivos ===
 echo.
 echo Directorio actual:
