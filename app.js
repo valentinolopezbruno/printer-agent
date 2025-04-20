@@ -3,9 +3,21 @@
 const express = require('express');
 const { spawn } = require('child_process');
 const winston = require('winston');
-const { normalize } = require('normalize-text');
 const path = require('path');
 const fs = require('fs');
+
+// Reemplazar la dependencia normalize-text con una función propia
+function normalizarTexto(texto) {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Eliminar acentos
+    .replace(/[áàäâ]/g, 'a')
+    .replace(/[éèëê]/g, 'e')
+    .replace(/[íìïî]/g, 'i')
+    .replace(/[óòöô]/g, 'o')
+    .replace(/[úùüû]/g, 'u')
+    .replace(/[ñ]/g, 'n');
+}
 
 // Configurar ruta de logs en AppData para Windows
 const logDirectory = process.platform === 'win32'
@@ -14,25 +26,25 @@ const logDirectory = process.platform === 'win32'
 
 const logPath = path.join(logDirectory, 'print-agent.log');
 
+// Debug inicial
+console.log('=== Print Agent Debug Info ===');
+console.log('Directorio actual:', process.cwd());
+console.log('Directorio de logs:', logDirectory);
+console.log('Archivo de log:', logPath);
+
 // Crear directorio de logs si no existe
 try {
   if (!fs.existsSync(logDirectory)) {
     fs.mkdirSync(logDirectory, { recursive: true });
   }
-  // Escribir un archivo de prueba para verificar permisos
-  fs.writeFileSync(path.join(logDirectory, 'test.txt'), 'test');
-  fs.unlinkSync(path.join(logDirectory, 'test.txt'));
 } catch (error) {
   console.error('Error al crear directorio de logs:', error);
   process.exit(1);
 }
 
-// Escribir directamente al archivo de log para debug inicial
-fs.writeFileSync(logPath, `=== Print Agent Started at ${new Date().toISOString()} ===\n`);
-
 // Configuración del logger
 const logger = winston.createLogger({
-  level: 'debug', // Cambiar a debug para más información
+  level: 'debug',
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.printf(({ timestamp, level, message }) => {
@@ -48,29 +60,10 @@ const logger = winston.createLogger({
   ]
 });
 
-// Log información inicial
-process.stdout.write('Iniciando Print Agent...\n');
-logger.info('=== Información del sistema ===');
-logger.info(`Sistema operativo: ${process.platform}`);
-logger.info(`Directorio actual: ${process.cwd()}`);
-logger.info(`Archivo de log: ${logPath}`);
-logger.info(`Versión de Node: ${process.version}`);
-logger.info(`Memoria disponible: ${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)}MB`);
-
-// Al inicio del archivo, después de los requires
-console.log('=== Print Agent Debug Info ===');
-console.log('Directorio actual:', process.cwd());
-console.log('Argumentos:', process.argv);
-console.log('Variables de entorno:', {
-  USERPROFILE: process.env.USERPROFILE,
-  LOCALAPPDATA: process.env.LOCALAPPDATA,
-  PATH: process.env.PATH
-});
-
 const app = express();
 const port = 3001;
 
-// Middleware básico
+// Middleware
 app.use(express.json());
 
 // Ruta de prueba
@@ -93,17 +86,6 @@ app.get('/status', (req, res) => {
     logs: logPath
   });
 });
-
-// Función para normalizar texto
-function normalizarTexto(texto) {
-  return normalize(texto)
-    .replace(/[áàäâ]/g, 'a')
-    .replace(/[éèëê]/g, 'e')
-    .replace(/[íìïî]/g, 'i')
-    .replace(/[óòöô]/g, 'o')
-    .replace(/[úùüû]/g, 'u')
-    .replace(/[ñ]/g, 'n');
-}
 
 // Función para generar el comando ESC/POS
 function generarComandoEscPos(ticket) {
@@ -142,21 +124,19 @@ function generarComandoEscPos(ticket) {
   lineas.push(`Estado: ${ticket.pagado === 1 ? 'PAGADO' : 'NO PAGADO'}\n`);
   lineas.push(`Tipo: ${ticket.tipoEntrega === 1 ? 'DOMICILIO' : 'LOCAL'}\n`);
   
-  // Si es un pedido a domicilio, mostrar la dirección
   if (ticket.tipoEntrega === 1) {
     lineas.push('\x1B\x21\x08'); // Texto en negrita
     lineas.push(`Direccion: ${normalizarTexto(ticket.direccion)}\n`);
   }
   lineas.push('\n');
 
-  // Encabezados de columnas
+  // Productos
   lineas.push('\x1B\x61\x01'); // Centrado
   lineas.push('\x1B\x21\x08'); // Texto en negrita
   lineas.push('PRODUCTO\n');
   lineas.push('\x1B\x21\x00'); // Texto normal
   lineas.push('--------------------------------\n');
 
-  // Productos
   let total = 0;
   ticket.detalles.forEach(detalle => {
     const subtotal = detalle.precioUnitario * detalle.cantidad;
@@ -178,8 +158,6 @@ function generarComandoEscPos(ticket) {
 
   // Pie de ticket
   lineas.push('\x1B\x61\x01'); // Centrado
-  lineas.push('--------------------------------\n');
-  lineas.push('\x1B\x21\x08'); // Texto en negrita
   lineas.push('Gracias por su compra\n\n');
   lineas.push('--------------------------------\n');
   
@@ -195,61 +173,67 @@ app.post('/imprimir', async (req, res) => {
   try {
     const ticket = req.body;
     logger.info('Recibido nuevo ticket para imprimir');
+    logger.info(`Datos del ticket: ${JSON.stringify(ticket)}`);
     
-    // Generar comando ESC/POS
     const comandoEscPos = generarComandoEscPos(ticket);
     
-    // Enviar a la impresora usando lp
-    const lp = spawn('lp', ['-d', 'printer', '-']);
+    // En Windows, verificar si usamos otro comando en lugar de 'lp'
+    const comando = process.platform === 'win32' ? 'notepad' : 'lp';
+    const args = process.platform === 'win32' ? 
+      ['/p'] : ['-d', 'printer', '-'];
     
-    lp.stdin.write(comandoEscPos);
-    lp.stdin.end();
+    logger.info(`Ejecutando comando de impresión: ${comando} ${args.join(' ')}`);
     
-    lp.on('close', (code) => {
+    const printProcess = spawn(comando, args);
+    
+    printProcess.stdin.write(comandoEscPos);
+    printProcess.stdin.end();
+    
+    printProcess.on('error', (error) => {
+      logger.error(`Error al ejecutar el proceso de impresión: ${error.message}`);
+      res.status(500).json({ error: error.message });
+    });
+    
+    printProcess.on('close', (code) => {
       if (code === 0) {
         logger.info('Ticket impreso exitosamente');
         res.status(200).json({ mensaje: 'Ticket impreso exitosamente' });
       } else {
         logger.error(`Error al imprimir: código ${code}`);
-        res.status(500).json({ error: 'Error al imprimir el ticket' });
+        res.status(500).json({ error: `Error al imprimir el ticket (código ${code})` });
       }
     });
     
   } catch (error) {
     logger.error(`Error: ${error.message}`);
+    logger.error(error.stack);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Mejorar el inicio del servidor
+// Iniciar servidor
 const server = app.listen(port, '0.0.0.0', () => {
-  const mensaje = `Servidor iniciado en http://localhost:${port}`;
-  logger.info(mensaje);
-  process.stdout.write(mensaje + '\n');
+  logger.info(`Servidor iniciado en http://localhost:${port}`);
+  console.log(`Servidor iniciado en http://localhost:${port}`);
 })
 .on('error', (error) => {
-  const errorMsg = `Error al iniciar el servidor: ${error.message}`;
-  logger.error(errorMsg);
-  process.stdout.write(errorMsg + '\n');
+  logger.error(`Error al iniciar el servidor: ${error.message}`);
+  console.error(`Error al iniciar el servidor: ${error.message}`);
   if (error.code === 'EADDRINUSE') {
     logger.error(`El puerto ${port} está en uso. Verificar si el servicio ya está corriendo.`);
   }
   process.exit(1);
 });
 
-// Manejo de errores mejorado
+// Manejo de errores
 process.on('uncaughtException', (error) => {
-  const errorMsg = `Error no capturado: ${error.message}\n${error.stack}`;
-  logger.error(errorMsg);
-  process.stdout.write(errorMsg + '\n');
+  logger.error(`Error no capturado: ${error.message}`);
+  logger.error(error.stack);
+  console.error('Error no capturado:', error);
   process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  const errorMsg = `Promesa rechazada no manejada: ${reason}`;
-  logger.error(errorMsg);
-  process.stdout.write(errorMsg + '\n');
+  logger.error('Promesa rechazada no manejada:', reason);
+  console.error('Promesa rechazada no manejada:', reason);
 });
-
-// Mantener el proceso vivo
-process.stdin.resume();
