@@ -1,6 +1,9 @@
 @echo off
 echo Instalando Agente de Impresion Tutto Bene...
 
+:: Cambiar al directorio del script
+cd /d "%~dp0"
+
 :: Verificar permisos de administrador
 net session >nul 2>&1
 if %errorLevel% neq 0 (
@@ -64,11 +67,19 @@ if errorlevel 1 (
     echo Servicio iniciado correctamente
 )
 
+:: Abrir el navegador para probar
+echo Abriendo pagina de estado...
+start http://localhost:3001/status
+
 echo.
 echo Instalacion completada!
-echo Para verificar el estado, abra en su navegador:
+echo.
+echo El servicio se iniciara automaticamente cuando inicies Windows
+echo Para verificar el estado, abre en tu navegador:
 echo http://localhost:3001/status
 echo.
 echo Los logs se encuentran en:
 echo %LOG_DIR%\print-agent.log
+echo.
+echo Presiona una tecla para finalizar...
 pause
