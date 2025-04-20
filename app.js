@@ -89,7 +89,7 @@ app.get('/status', (req, res) => {
 });
 
 // Configuración de la impresora
-const PRINTER_NAME = 'POS-58';
+const PRINTER_NAME = 'POS-58(copy of 2)';
 
 // Función para generar el comando ESC/POS
 function generarComandoEscPos(ticket) {
