@@ -4,10 +4,35 @@ const express = require('express');
 const { spawn } = require('child_process');
 const winston = require('winston');
 const { normalize } = require('normalize-text');
+const path = require('path');
+const fs = require('fs');
+
+// Configurar ruta de logs en AppData para Windows
+const logDirectory = process.platform === 'win32'
+  ? path.join(process.env.LOCALAPPDATA || process.env.USERPROFILE, 'TuttoBenePrintAgent')
+  : '.';
+
+const logPath = path.join(logDirectory, 'print-agent.log');
+
+// Crear directorio de logs si no existe
+try {
+  if (!fs.existsSync(logDirectory)) {
+    fs.mkdirSync(logDirectory, { recursive: true });
+  }
+  // Escribir un archivo de prueba para verificar permisos
+  fs.writeFileSync(path.join(logDirectory, 'test.txt'), 'test');
+  fs.unlinkSync(path.join(logDirectory, 'test.txt'));
+} catch (error) {
+  console.error('Error al crear directorio de logs:', error);
+  process.exit(1);
+}
+
+// Escribir directamente al archivo de log para debug inicial
+fs.writeFileSync(logPath, `=== Print Agent Started at ${new Date().toISOString()} ===\n`);
 
 // Configuración del logger
 const logger = winston.createLogger({
-  level: 'info',
+  level: 'debug', // Cambiar a debug para más información
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.printf(({ timestamp, level, message }) => {
@@ -16,15 +41,48 @@ const logger = winston.createLogger({
   ),
   transports: [
     new winston.transports.Console(),
-    new winston.transports.File({ filename: 'print-agent.log' })
+    new winston.transports.File({ 
+      filename: logPath,
+      options: { flags: 'a' }
+    })
   ]
 });
+
+// Log información inicial
+process.stdout.write('Iniciando Print Agent...\n');
+logger.info('=== Información del sistema ===');
+logger.info(`Sistema operativo: ${process.platform}`);
+logger.info(`Directorio actual: ${process.cwd()}`);
+logger.info(`Archivo de log: ${logPath}`);
+logger.info(`Versión de Node: ${process.version}`);
+logger.info(`Memoria disponible: ${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)}MB`);
 
 const app = express();
 const port = 3001;
 
-// Middleware para parsear JSON
+// Middleware básico
 app.use(express.json());
+
+// Ruta de prueba
+app.get('/', (req, res) => {
+  logger.info('Acceso a ruta principal');
+  res.json({ 
+    status: 'Print Agent running',
+    time: new Date().toISOString(),
+    platform: process.platform
+  });
+});
+
+// Ruta de estado
+app.get('/status', (req, res) => {
+  logger.info('Verificando estado');
+  res.json({
+    status: 'running',
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    logs: logPath
+  });
+});
 
 // Función para normalizar texto
 function normalizarTexto(texto) {
@@ -153,13 +211,35 @@ app.post('/imprimir', async (req, res) => {
   }
 });
 
-// Iniciar servidor
-app.listen(port, () => {
-  logger.info(`Servidor iniciado en http://localhost:${port}`);
-});
-
-// Manejar errores no capturados
-process.on('uncaughtException', (error) => {
-  logger.error(`Error no capturado: ${error.message}`);
+// Mejorar el inicio del servidor
+const server = app.listen(port, '0.0.0.0', () => {
+  const mensaje = `Servidor iniciado en http://localhost:${port}`;
+  logger.info(mensaje);
+  process.stdout.write(mensaje + '\n');
+})
+.on('error', (error) => {
+  const errorMsg = `Error al iniciar el servidor: ${error.message}`;
+  logger.error(errorMsg);
+  process.stdout.write(errorMsg + '\n');
+  if (error.code === 'EADDRINUSE') {
+    logger.error(`El puerto ${port} está en uso. Verificar si el servicio ya está corriendo.`);
+  }
   process.exit(1);
 });
+
+// Manejo de errores mejorado
+process.on('uncaughtException', (error) => {
+  const errorMsg = `Error no capturado: ${error.message}\n${error.stack}`;
+  logger.error(errorMsg);
+  process.stdout.write(errorMsg + '\n');
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  const errorMsg = `Promesa rechazada no manejada: ${reason}`;
+  logger.error(errorMsg);
+  process.stdout.write(errorMsg + '\n');
+});
+
+// Mantener el proceso vivo
+process.stdin.resume();

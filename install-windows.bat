@@ -11,12 +11,15 @@ if %errorLevel% neq 0 (
 )
 
 :: Detener el servicio si ya existe
+echo Deteniendo servicios existentes...
 taskkill /F /IM print-agent.exe >nul 2>&1
 
 :: Crear directorio de instalacion
+echo Creando directorio de instalacion...
 if not exist "C:\Program Files\TuttoBenePrintAgent" mkdir "C:\Program Files\TuttoBenePrintAgent"
 
 :: Copiar archivos
+echo Copiando archivos...
 copy /Y "dist\print-agent.exe" "C:\Program Files\TuttoBenePrintAgent\"
 if errorlevel 1 (
     echo Error al copiar archivos.
@@ -25,11 +28,32 @@ if errorlevel 1 (
 )
 
 :: Agregar al inicio
+echo Configurando inicio automatico...
 reg add "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run" /v "TuttoBenePrintAgent" /t REG_SZ /d "\"C:\Program Files\TuttoBenePrintAgent\print-agent.exe\"" /f
 
 :: Iniciar el servicio
-start "" "C:\Program Files\TuttoBenePrintAgent\print-agent.exe"
+echo Iniciando el servicio...
+cd "C:\Program Files\TuttoBenePrintAgent"
+start "" "print-agent.exe"
 
-echo Instalacion completada exitosamente!
-echo El servicio esta corriendo en http://localhost:3001
+:: Esperar un momento y verificar si el servicio está corriendo
+timeout /t 5 /nobreak
+netstat -ano | find "3001" > nul
+if errorlevel 1 (
+    echo ADVERTENCIA: El servicio no parece estar corriendo en el puerto 3001
+    echo Verificando el archivo de log...
+    if exist "print-agent.log" (
+        type "print-agent.log"
+    ) else (
+        echo No se encontro archivo de log
+    )
+) else (
+    echo Servicio iniciado correctamente
+)
+
+echo.
+echo Instalacion completada!
+echo El servicio deberia estar corriendo en http://localhost:3001
+echo Si hay problemas, revisa el archivo de log en:
+echo C:\Program Files\TuttoBenePrintAgent\print-agent.log
 pause 
