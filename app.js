@@ -57,6 +57,16 @@ logger.info(`Archivo de log: ${logPath}`);
 logger.info(`Versión de Node: ${process.version}`);
 logger.info(`Memoria disponible: ${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)}MB`);
 
+// Al inicio del archivo, después de los requires
+console.log('=== Print Agent Debug Info ===');
+console.log('Directorio actual:', process.cwd());
+console.log('Argumentos:', process.argv);
+console.log('Variables de entorno:', {
+  USERPROFILE: process.env.USERPROFILE,
+  LOCALAPPDATA: process.env.LOCALAPPDATA,
+  PATH: process.env.PATH
+});
+
 const app = express();
 const port = 3001;
 
